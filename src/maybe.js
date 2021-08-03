@@ -1,4 +1,4 @@
-import { compose, prop, path, __, curry } from 'ramda'
+import { compose, prop, path, __, curry, pipe } from 'ramda'
 
 
 const banners = {
@@ -249,7 +249,7 @@ bannerSrc
 
 // Mocking document element
 const document = {
-  querySelector: str => ({ src: '', el: 'just mock of image DOM-node'})
+  querySelector: str => ({ src: '', innerHTML: '', el: 'just mock of image DOM-node'})
 }
 
 // Now all that stuff got sorted, we can take DOM-element of image, and fill it
@@ -328,3 +328,107 @@ const applyBanner2Maybe = liftA2(applyBanner2)
 applyBanner2Maybe
 const mutatedBanner2 = applyBanner2Maybe(bannerEl, bannerSrc)
 mutatedBanner2
+
+
+///////////////
+
+
+// Now, try to write same Monadic interface in pointfree functional style, not 
+// the OOP style, no more objects, methods etc.:
+
+// map :: Monad.m => (a -> b) -> m a -> m b
+const map = curry(function (fn, m) {
+  return m.map(fn)
+})
+
+// chain :: Monad.m => (a -> m b) -> m a -> m b
+const chain = curry(function (fn, m) {
+  return m.chain(fn)
+})
+
+// ap :: Monad.m => m (a -> b) -> m a -> m b
+const ap = curry(function (mf, m) {  // mf is monadic wrapper with function value
+  return mf.ap(m)  // will become m.map(mf.__value)
+})
+
+// orElse :: Monad m => m a -> a -> m a
+const orElse = curry(function (val, m) {
+  return m.orElse(val)
+})
+
+// getOrElse :: Monad m => m a -> a -> a
+const getOrElse = curry(function (val, m) {
+  return m.getOrElse(val)
+})
+
+
+// And with that done, we can write the whole thing in a more pointfree style:
+const bannerEl2 = Maybe.of(document.querySelector('.banner > img'))
+const applyBanner3 = curry(function (el, src) { el.src = src; return el })
+
+// customiseBanner :: Monad m => String -> DOMElement
+const customiseBanner = pipe(
+  Maybe.of,
+  map(path(['accountDetails', 'address', 'province'])),
+  chain(getProvinceBanner),
+  liftA2(applyBanner3, bannerEl2)
+)
+const customisedBanner2 = customiseBanner(userOk)
+customisedBanner2
+
+
+///////////////////
+///////////////////
+
+
+// And we can do such pipelines with any object with Monadic interface, not only
+// with a Maybe monad. Trying to make some fun with promises:
+Promise.of              = Promise.resolve
+Promise.prototype.map   = Promise.prototype.then
+Promise.prototype.chain = Promise.prototype.then
+Promise.prototype.ap    = function (otherPromise) {
+  return this.then(otherPromise.map)
+}
+
+// With this done, we can define pipelines like this:
+
+// Set the innerHTML attribute on an element.
+// Note, this method mutates data. Use with caution.
+const setHTML = curry(function (el, htmlStr) {
+  el.innerHTML = htmlStr 
+  return el 
+}) 
+
+// Get an element.
+// Note, this is an impure function because it relies on the global document.
+// Use with caution.
+const getEl = compose(Promise.of, document.querySelector) 
+
+// Some mock $ object:
+const $ = {
+  getJSON: str => {
+    notification: {
+      message: '<span>Hello from Mocked server</span>'
+    }
+  }
+}
+
+// Fetch an update from a server somewhere.
+// Takes a URL and returns a Promise for JSON.
+const fetchUpdate = compose(Promise.of, $.getJSON) 
+
+// Process an update.
+const processUpdate = pipe(
+  map(path(['notification', 'message'])),
+  liftA2(setHTML, getEl('.notifications'))
+) 
+
+const updatePromise = fetchUpdate('/path/to/update/api') 
+const result = processUpdate(updatePromise) 
+result
+
+// Take a moment to look at that processUpdate function again. We’ve defined
+// a pipeline that takes a monad input and then map and lift to transform it.
+// But there’s nothing in the pipeline that assumes we’re working with a Promise.
+// The pipeline would work just as well with our Maybe monad. And, in fact,
+// it would work with any object that meets the Fantasyland Monad Spec.

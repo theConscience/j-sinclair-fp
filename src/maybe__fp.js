@@ -350,3 +350,25 @@ const liftA2 = curry(function (fn, m1, m2) {  // fn should be curried
 const applyBanner2Maybe = liftA2(applyBanner2)
 const mutatedBanner2 = applyBanner2Maybe(bannerEl, bannerSrc)
 mutatedBanner2
+
+
+///////////////
+
+
+// Now, try to write same Monadic interface in pointfree functional style, not 
+// the OOP style, no more objects, methods etc.:
+
+// map :: Monad.m => (a -> b) -> m a -> m b
+const map = curry(function (fn, m) {
+  return m.map(fn)
+})
+
+// chain :: Monad.m => (a -> mb) -> m a -> m b
+const chain = curry(function (fn, m) {
+  return m.chain(fn)
+})
+
+// ap :: Monad.m => m (a -> b) -> m a -> m b
+const ap = curry(function (mf, m) {
+  return mf.ap(m)  // will become m.map(mf.__value)
+})
